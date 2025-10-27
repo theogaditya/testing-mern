@@ -4,11 +4,6 @@ import helmet from "helmet";
 import compression from "compression";
 import cors from "cors";
 import { PrismaClient } from "@prisma/client";
-import { User } from "./lib/types";
-import { userSchema } from "./lib/validation";
-
-//routes
-import { v2route } from "./routes/v2-route";
 
 dotenv.config();
 
@@ -19,9 +14,8 @@ export class Server {
   private readonly backEnd?: string;
   private readonly worker?: string;
 
-  constructor(db: PrismaClient) {
+  constructor() {
     this.app = express();
-    this.db = db;
 
     this.frontEnd = process.env.frontend;
     this.backEnd = process.env.backend;
@@ -58,24 +52,11 @@ export class Server {
   }
 
   private initializeRoutes(): void {
+    
     this.app.get("/", (req: Request, res: Response) => {
-      res.send("Hello World!");
+      res.send("Hello worker");
     });
 
-    this.app.post("/v1", (req: Request, res: Response) => {
-      const { name, age } = req.body;
-
-      if (!name || !age) {
-        return res.status(400).json({ error: "Missing name or age" });
-      }
-
-      return res.status(200).json({
-        name: name.toUpperCase(),
-        age,
-      });
-    });
-
-    this.app.use(v2route(this.db));
   }
 
   public getApp(): Express {

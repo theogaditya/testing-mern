@@ -1,9 +1,10 @@
+set -e
 docker compose up -d
-echo 'Waiting for database to be ready...'
-./scripts/wait-for-it.sh "postgresql://postgres:admin123@localhost:5432/postgres"
-echo 'Database is ready!'
+echo 'Waiting for database to be ready.............'
+ ./scripts/wait-for-it.sh localhost:5432
+echo 'Database is ready!!!!!!!!!!!!!'
 npx prisma migrate dev 
 npx prisma generate
-npm run build
-npm run test
+bun run build
+npx vitest ./test/integration.test.ts --run
 docker compose down

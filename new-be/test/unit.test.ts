@@ -1,15 +1,17 @@
-import { describe, expect, it,vi,beforeEach } from "vitest";
+import { describe, expect, it, beforeEach } from "vitest";
 import request from "supertest";
-import prisma  from "../lib/_mocks_/prisma";
-import { createApp } from "../index";
+import prisma from "../lib/_mocks_/prisma";
+import { Server } from "../index";
+import { Gender } from "@prisma/client";
 
-const app = createApp(prisma);
+const server = new Server(prisma);
+const app = server.getApp();
 
 describe("POST /v1", () => {
   it("should return 400 if name or age is missing", async () => {
     const res = await request(app)
       .post("/v1")
-      .send({ name: "Adi" }); 
+      .send({ name: "Adi" });
 
     expect(res.status).toBe(400);
     expect(res.body).toEqual({ error: "Missing name or age" });
@@ -24,7 +26,6 @@ describe("POST /v1", () => {
     expect(res.body).toEqual({ name: "ADI", age: 25 });
   });
 });
-
 
 describe("POST /v2", () => {
   beforeEach(() => {

@@ -2,21 +2,21 @@
 import { beforeAll, afterAll, beforeEach, describe, it, expect, vi } from "vitest";
 import request from "supertest";
 import dotenv from "dotenv";
-
+import { Server } from "../index"
 import { getPrisma } from "../lib/prisma";
-import { createApp } from "../index";
 
 dotenv.config();
 
 let prisma: ReturnType<typeof getPrisma>;
-let app: ReturnType<typeof createApp>;
+let app: ReturnType<typeof Server.prototype.getApp>;
 
 beforeAll(async () => {
   // create and connect real Prisma client against test DB
   prisma = getPrisma();
+  const server = new Server(prisma);
   await prisma.$connect();
   await prisma.user.deleteMany().catch(() => { /* ignore if table doesn't exist yet */ });
-  app = createApp(prisma);
+  app = server.getApp();
 });
 
 afterAll(async () => {

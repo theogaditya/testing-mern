@@ -1,5 +1,5 @@
 {
-  "name": "new-be",
+  "name": "worker",
   "module": "index.ts",
   "type": "module",
   "private": true,
@@ -7,38 +7,41 @@
     "dev": "bun run bin.ts",
     "build": "bun build bin.ts --outdir ./dist",
     "start": "bun run bin.ts",
-    "test:unit": "npx vitest test/unit.test.ts --run",
-    "test:integration": "./scripts/run-integration.sh"
-
+    "test": "npx vitest test/ws.test.ts --run"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/ws": "^8.18.1"
   },
   "peerDependencies": {
-    "typescript": "^5",
     "@types/compression": "^1.8.1",
     "@types/cors": "^2.8.19",
     "@types/dotenv": "^6.1.1",
-    "@types/express": "^5.0.3",
+    "@types/express": "^5.0.4",
     "@types/helmet": "^0.0.48",
     "@types/supertest": "^6.0.3",
     "jest": "^30.2.0",
     "supertest": "^7.1.4",
     "ts-jest": "^29.4.4",
+    "typescript": "^5",
     "vitest": "^3.2.4",
     "vitest-mock-extended": "^3.1.0"
   },
   "dependencies": {
     "@grpc/grpc-js": "^1.14.0",
     "@grpc/proto-loader": "^0.8.0",
-    "@prisma/client": "^6.17.1",
+    "@prisma/client": "^6.18.0",
+    "@redis/client": "^5.9.0",
+    "@types/redis": "^4.0.10",
     "compression": "^1.8.1",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "helmet": "^8.1.0",
     "prisma": "^6.17.1",
-    "typescript": "^5.9.3",
+    "redis": "^5.9.0",
+    "typescript": "^5",
+    "ws": "^8.18.3",
     "zod": "^4.1.11"
   }
 }
