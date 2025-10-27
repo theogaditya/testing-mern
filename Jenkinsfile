@@ -2,7 +2,7 @@ pipeline {
   agent { label 'agent-testing-mern' }
 
   environment {
-    DOCKERHUB_CREDENTIALS = 'testing-mern-docker'    // you already created this
+    DOCKERHUB_CREDENTIALS = 'testing-mern-docker'
     DOCKERHUB_NAMESPACE = "ogadityahota"
     BACKEND_REPO = "${env.DOCKERHUB_NAMESPACE}/testing-mern-backend"
     WORKER_REPO  = "${env.DOCKERHUB_NAMESPACE}/testing-mern-worker"
@@ -11,8 +11,6 @@ pipeline {
     TEST_REDIS_IMAGE = "redis:7-alpine"
     // IMAGE_TAG will be computed; keep a default in case BUILD_NUMBER/GIT_COMMIT aren't set
     IMAGE_TAG = "${env.BUILD_NUMBER ?: 'local'}-${env.GIT_COMMIT?.take(8) ?: 'local'}"
-    // Jenkins secret id for Neon DB connection string (create secret text in Jenkins)
-    NEON_CRED_ID = "postgresql://neondb_owner:npg_BK1mWS0oaLGz@ep-rapid-hat-a4ostuob-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
   }
 
   stages {
@@ -21,17 +19,6 @@ pipeline {
         checkout scm
       }
     }
-
-    // stage('Compute tag') {
-    //   steps {
-    //     script {
-    //       // compute a stable tag — fallback to timestamp if nothing else
-    //       def commit = env.GIT_COMMIT ?: sh(script: "git rev-parse --short HEAD || echo local", returnStdout: true).trim()
-    //       env.IMAGE_TAG = "${env.BUILD_NUMBER ?: 'manual'}-${commit}"
-    //       echo "IMAGE_TAG = ${env.IMAGE_TAG}"
-    //     }
-    //   }
-    // }
 
     stage('Prepare Docker network') {
       steps {
@@ -54,24 +41,19 @@ pipeline {
       }
     }
 
-    stage('Backend: run unit tests (needs Neon DB)') {
+    stage('Backend: run unit tests') {
       steps {
-        // inject NEON DB connection string from Jenkins secret text (id: neon-db-url)
-        withCredentials([string(credentialsId: env.NEON_CRED_ID, variable: 'DATABASE_URL')]) {
-          dir('backend') {
-            sh '''
-              # Run backend tests inside oven/bun container so agent doesn't need bun installed
-              docker run --rm \
-                -v "$PWD":/work -w /work \
-                --network ${CI_DOCKER_NETWORK} \
-                -e DATABASE_URL="${DATABASE_URL}" \
-                oven/bun:latest bash -lc '
-                  bun install --no-save || true
-                  # run unit tests which require DATABASE_URL (Neon)
-                  DATABASE_URL="${DATABASE_URL}" bun run test:unit
-                '
-            '''
-          }
+        dir('backend') {
+          sh '''
+            # Run backend unit tests inside oven/bun container (no DB required)
+            docker run --rm \
+              -v "$PWD":/work -w /work \
+              --network ${CI_DOCKER_NETWORK} \
+              oven/bun:latest bash -lc '
+                bun install --no-save || true
+                bun run test:unit
+              '
+          '''
         }
       }
     }
