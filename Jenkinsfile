@@ -12,7 +12,7 @@ pipeline {
     // IMAGE_TAG will be computed; keep a default in case BUILD_NUMBER/GIT_COMMIT aren't set
     IMAGE_TAG = "${env.BUILD_NUMBER ?: 'local'}-${env.GIT_COMMIT?.take(8) ?: 'local'}"
     // Jenkins secret id for Neon DB connection string (create secret text in Jenkins)
-    NEON_CRED_ID = "neon-db-url"
+    NEON_CRED_ID = "postgresql://neondb_owner:npg_BK1mWS0oaLGz@ep-rapid-hat-a4ostuob-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
   }
 
   stages {
