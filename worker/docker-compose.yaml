@@ -1,19 +1,27 @@
-version: "3.9"
-
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: redis-worker-one
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
   backend:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: bun-backend
+    container_name: bun-worker-one
     ports:
-      - "3001:3001"
+      - "3002:3002"
+      - "8081:8081"
     env_file:
       - .env
     environment:
       PORT: ${PORT}
-      DATABASE_URL: ${DATABASE_URL}
+      WS_PORT: ${WS_PORT}
       FRONTEND_URL: ${frontend}
       BACKEND_URL: ${backend}
       WORKER_URL: ${worker}
+      REDIS_URL: ${REDIS_URL}
+      
     restart: unless-stopped

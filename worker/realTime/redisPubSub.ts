@@ -1,10 +1,11 @@
 import { createClient, RedisClientType } from "redis";
+const REDIS_URL = process.env.REDIS_URL || "redis://redis:6379";
 
 export class RedisPub {
   private clientPublish: RedisClientType;
 
   constructor() {
-    this.clientPublish = createClient();
+    this.clientPublish = createClient({url: REDIS_URL});
     this.initalize();
   }
   private async initalize() {
@@ -22,7 +23,7 @@ export class RedisSub {
   private clientSubscribe: RedisClientType;
 
   constructor() {
-    this.clientSubscribe = createClient();
+    this.clientSubscribe = createClient({url: REDIS_URL});
     this.initalize();
   }
   private async initalize() {
