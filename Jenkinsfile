@@ -9,22 +9,17 @@ pipeline {
     CI_DOCKER_NETWORK = "ci-net-testing-mern"
     TEST_REDIS_NAME = "ci-redis-testing-mern"
     TEST_REDIS_IMAGE = "redis:7-alpine"
-    // IMAGE_TAG will be computed; keep a default in case BUILD_NUMBER/GIT_COMMIT aren't set
     IMAGE_TAG = "${env.BUILD_NUMBER ?: 'local'}-${env.GIT_COMMIT?.take(8) ?: 'local'}"
   }
 
   stages {
     stage('Checkout') {
-      steps {
-        checkout scm
-      }
+      steps { checkout scm }
     }
 
     stage('Prepare Docker network') {
       steps {
-        sh '''
-          docker network inspect ${CI_DOCKER_NETWORK} >/dev/null 2>&1 || docker network create ${CI_DOCKER_NETWORK}
-        '''
+        sh '''docker network inspect ${CI_DOCKER_NETWORK} >/dev/null 2>&1 || docker network create ${CI_DOCKER_NETWORK}'''
       }
     }
 
@@ -33,7 +28,6 @@ pipeline {
         sh '''
           docker rm -f ${TEST_REDIS_NAME} || true
           docker run -d --name ${TEST_REDIS_NAME} --network ${CI_DOCKER_NETWORK} ${TEST_REDIS_IMAGE}
-          # wait for redis ready
           for i in $(seq 1 10); do
             docker exec ${TEST_REDIS_NAME} redis-cli ping | grep -q PONG && break || sleep 1
           done
@@ -41,17 +35,43 @@ pipeline {
       }
     }
 
+    // === backend uses 'new-be' directory (your repo)
     stage('Backend: run unit tests') {
       steps {
-        dir('backend') {
+        dir('new-be') {
           sh '''
+            set -euxo pipefail
+            echo "== backend working dir =="
+            pwd
+            ls -la
+
             # Run backend unit tests inside oven/bun container (no DB required)
             docker run --rm \
               -v "$PWD":/work -w /work \
               --network ${CI_DOCKER_NETWORK} \
               oven/bun:latest bash -lc '
+                set -euxo pipefail
+                echo "container: ls /work"
+                ls -la /work || true
+
+                if [ ! -f package.json ]; then
+                  echo "ERROR: package.json not found in new-be; aborting tests."
+                  exit 2
+                fi
+
                 bun install --no-save || true
-                bun run test:unit
+
+                # prefer test:unit then test
+                if grep -q "\"test:unit\"" package.json; then
+                  echo "running bun run test:unit"
+                  bun run test:unit
+                elif grep -q "\"test\"" package.json; then
+                  echo "running bun run test"
+                  bun run test
+                else
+                  echo "No test scripts found"
+                  exit 3
+                fi
               '
           '''
         }
@@ -67,6 +87,7 @@ pipeline {
               --network ${CI_DOCKER_NETWORK} \
               -e REDIS_URL="redis://ci-redis-testing-mern:6379" \
               oven/bun:latest bash -lc '
+                set -euxo pipefail
                 bun install --no-save || true
                 REDIS_URL="redis://ci-redis-testing-mern:6379" bun run test
               '
@@ -81,15 +102,15 @@ pipeline {
           sh '''
             echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
 
-            # Build & push backend
-            cd backend
+            # backend (new-be)
+            cd new-be
             docker build -t ${BACKEND_REPO}:${IMAGE_TAG} .
             docker push ${BACKEND_REPO}:${IMAGE_TAG}
             docker tag ${BACKEND_REPO}:${IMAGE_TAG} ${BACKEND_REPO}:latest
             docker push ${BACKEND_REPO}:latest || true
             cd ..
 
-            # Build & push worker
+            # worker
             cd worker
             docker build -t ${WORKER_REPO}:${IMAGE_TAG} .
             docker push ${WORKER_REPO}:${IMAGE_TAG}
@@ -100,7 +121,7 @@ pipeline {
         }
       }
     }
-  } // stages
+  }
 
   post {
     always {
@@ -109,11 +130,7 @@ pipeline {
         docker network rm ${CI_DOCKER_NETWORK} || true
       '''
     }
-    success {
-      echo "Success: pushed ${BACKEND_REPO}:${IMAGE_TAG} and ${WORKER_REPO}:${IMAGE_TAG}"
-    }
-    failure {
-      echo "Pipeline failed — check logs"
-    }
+    success { echo "Success: pushed ${BACKEND_REPO}:${IMAGE_TAG} and ${WORKER_REPO}:${IMAGE_TAG}" }
+    failure { echo "Pipeline failed — check logs" }
   }
 }
