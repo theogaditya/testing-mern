@@ -3,13 +3,12 @@ pipeline {
 
   environment {
     DOCKERHUB_CREDENTIALS = 'testing-mern-docker'
-    DOCKERHUB_NAMESPACE = "ogadityahota"
-    BACKEND_REPO = "${env.DOCKERHUB_NAMESPACE}/testing-mern-backend"
-    WORKER_REPO  = "${env.DOCKERHUB_NAMESPACE}/testing-mern-worker"
-    CI_DOCKER_NETWORK = "ci-net-testing-mern"
-    TEST_REDIS_NAME = "ci-redis-testing-mern"
-    TEST_REDIS_IMAGE = "redis:7-alpine"
-    IMAGE_TAG = "${env.BUILD_NUMBER ?: 'local'}-${env.GIT_COMMIT?.take(8) ?: 'local'}"
+    BACKEND_IMAGE = 'ogadityahota/testing-mern-backend'
+    WORKER_IMAGE  = 'ogadityahota/testing-mern-worker'
+    CI_NET = 'ci-net-testing-mern'
+    REDIS_NAME = 'ci-redis-testing-mern'
+    REDIS_IMAGE = 'redis:7-alpine'
+    IMAGE_TAG = "${env.BUILD_NUMBER ?: 'local'}"
   }
 
   stages {
@@ -17,105 +16,66 @@ pipeline {
       steps { checkout scm }
     }
 
-    stage('Prepare Docker network') {
-      steps {
-        sh '''docker network inspect ${CI_DOCKER_NETWORK} >/dev/null 2>&1 || docker network create ${CI_DOCKER_NETWORK}'''
-      }
-    }
-
-    stage('Start test Redis (for worker tests)') {
+    stage('Start Redis for tests') {
       steps {
         sh '''
-          docker rm -f ${TEST_REDIS_NAME} || true
-          docker run -d --name ${TEST_REDIS_NAME} --network ${CI_DOCKER_NETWORK} ${TEST_REDIS_IMAGE}
+          docker network inspect ${CI_NET} >/dev/null 2>&1 || docker network create ${CI_NET}
+          docker rm -f ${REDIS_NAME} >/dev/null 2>&1 || true
+          docker run -d --name ${REDIS_NAME} --network ${CI_NET} ${REDIS_IMAGE}
+          # wait for redis
           for i in $(seq 1 10); do
-            docker exec ${TEST_REDIS_NAME} redis-cli ping | grep -q PONG && break || sleep 1
+            docker exec ${REDIS_NAME} redis-cli ping | grep -q PONG && break || sleep 1
           done
         '''
       }
     }
 
-    // === backend uses 'new-be' directory (your repo)
-    stage('Backend: run unit tests') {
+    stage('Backend: unit tests') {
       steps {
         dir('new-be') {
           sh '''
-            set -euxo pipefail
-            echo "== backend working dir =="
-            pwd
-            ls -la
-
-            # Run backend unit tests inside oven/bun container (no DB required)
-            docker run --rm \
-              -v "$PWD":/work -w /work \
-              --network ${CI_DOCKER_NETWORK} \
-              oven/bun:latest bash -lc '
-                set -euxo pipefail
-                echo "container: ls /work"
-                ls -la /work || true
-
-                if [ ! -f package.json ]; then
-                  echo "ERROR: package.json not found in new-be; aborting tests."
-                  exit 2
-                fi
-
-                bun install --no-save || true
-
-                # prefer test:unit then test
-                if grep -q "\"test:unit\"" package.json; then
-                  echo "running bun run test:unit"
-                  bun run test:unit
-                elif grep -q "\"test\"" package.json; then
-                  echo "running bun run test"
-                  bun run test
-                else
-                  echo "No test scripts found"
-                  exit 3
-                fi
-              '
+            docker run --rm -v "$PWD":/work -w /work --network ${CI_NET} oven/bun:latest bash -lc '
+              bun install --no-save
+              bun run test:unit
+            '
           '''
         }
       }
     }
 
-    stage('Worker: run tests (needs Redis)') {
+    stage('Worker: tests') {
       steps {
         dir('worker') {
           sh '''
-            docker run --rm \
-              -v "$PWD":/work -w /work \
-              --network ${CI_DOCKER_NETWORK} \
-              -e REDIS_URL="redis://ci-redis-testing-mern:6379" \
-              oven/bun:latest bash -lc '
-                set -euxo pipefail
-                bun install --no-save || true
-                REDIS_URL="redis://ci-redis-testing-mern:6379" bun run test
-              '
+            docker run --rm -v "$PWD":/work -w /work --network ${CI_NET} -e REDIS_URL="redis://${REDIS_NAME}:6379" oven/bun:latest bash -lc '
+              bun install --no-save
+              REDIS_URL="redis://${REDIS_NAME}:6379" bun run test
+            '
           '''
         }
       }
     }
 
-    stage('Docker Build & Push (backend & worker)') {
+    stage('Build & Push images') {
       steps {
         withCredentials([usernamePassword(credentialsId: env.DOCKERHUB_CREDENTIALS, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
           sh '''
             echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
 
-            # backend (new-be)
+            # build & push backend
             cd new-be
-            docker build -t ${BACKEND_REPO}:${IMAGE_TAG} .
-            docker push ${BACKEND_REPO}:${IMAGE_TAG}
-            docker tag ${BACKEND_REPO}:${IMAGE_TAG} ${BACKEND_REPO}:latest
-            docker push ${BACKEND_REPO}:latest || true
+            docker build -t ${BACKEND_IMAGE}:${IMAGE_TAG} .
+            docker push ${BACKEND_IMAGE}:${IMAGE_TAG}
+            docker tag ${BACKEND_IMAGE}:${IMAGE_TAG} ${BACKEND_IMAGE}:latest
+            docker push ${BACKEND_IMAGE}:latest || true
             cd ..
 
-            # worker
+            # build & push worker
             cd worker
-            docker build -t ${WORKER_REPO}:${IMAGE_TAG} .
-            docker push ${WORKER_REPO}:${IMAGE_TAG}
-            docker tag ${WORKER_REPO}:${IMAGE_TAG} ${WORKER_REPO}:latest
-            docker push ${WORKER_REPO}:latest || true
+            docker build -t ${WORKER_IMAGE}:${IMAGE_TAG} .
+            docker push ${WORKER_IMAGE}:${IMAGE_TAG}
+            docker tag ${WORKER_IMAGE}:${IMAGE_TAG} ${WORKER_IMAGE}:latest
+            docker push ${WORKER_IMAGE}:latest || true
             cd ..
           '''
         }
@@ -126,11 +86,9 @@ pipeline {
   post {
     always {
       sh '''
-        docker rm -f ${TEST_REDIS_NAME} || true
-        docker network rm ${CI_DOCKER_NETWORK} || true
+        docker rm -f ${REDIS_NAME} >/dev/null 2>&1 || true
+        docker network rm ${CI_NET} >/dev/null 2>&1 || true
       '''
     }
-    success { echo "Success: pushed ${BACKEND_REPO}:${IMAGE_TAG} and ${WORKER_REPO}:${IMAGE_TAG}" }
-    failure { echo "Pipeline failed — check logs" }
   }
 }
