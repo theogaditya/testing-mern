@@ -32,7 +32,7 @@ pipeline {
       steps {
         dir('new-be') {
           sh 'bun install --ignore-scripts || true'
-          sh 'bun run test:unit'
+          sh 'npx vitest test/unit.test.ts --run'
         }
       }
     }
@@ -45,7 +45,7 @@ pipeline {
         }
         dir('worker') {
           sh 'bun install --ignore-scripts || true'
-          sh 'bun run test'
+          sh 'npx vitest test/ws.test.ts --run'
         }
       }
       post {
