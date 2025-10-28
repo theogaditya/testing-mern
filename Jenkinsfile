@@ -87,15 +87,38 @@ pipeline {
   }
 
   post {
-    success {
-      echo "CI pipeline finished and images pushed as ${env.BUILD_TAG}"
+  success {
+    script {
+      // --- configure these variables as environment variables earlier in Jenkinsfile or hardcode here ---
+      env.ARGOCD_SERVER = 'a794d5cd94aee45dfb7c88d33ef442b3-198542243.us-east-2.elb.amazonaws.com' // your external argocd endpoint (no https://)
+      env.ARGOCD_APP = 'wanderlust' 
     }
-    failure {
-      echo "CI pipeline failed"
-    }
-    always {
-      // make sure no leftover redis
-      sh 'docker rm -f ci-redis || true'
+
+    // Use the stored username/password (argocd admin). Create credential id 'argocd-login' in Jenkins.
+    withCredentials([usernamePassword(credentialsId: 'argocd-login', usernameVariable: 'ARGO_USER', passwordVariable: 'ARGO_PASS')]) {
+      sh '''
+        set -e
+        echo "Requesting ArgoCD token..."
+        # get JWT token using ArgoCD session API
+        TOKEN=$(curl -s -k -H "Content-Type: application/json" -d '{"username":"'"$ARGO_USER"'","password":"'"$ARGO_PASS"'"}' https://${ARGOCD_SERVER}/api/v1/session \
+                | python3 -c "import sys, json; print(json.load(sys.stdin).get('token',''))")
+
+        if [ -z "$TOKEN" ]; then
+          echo "ERROR: unable to get ArgoCD token"; exit 1
+        fi
+
+        echo "Triggering ArgoCD sync for app: ${ARGOCD_APP}"
+        # POST to sync endpoint. This requests a normal sync (ArgoCD will do its automated sync/rollout)
+        curl -s -k -H "Authorization: Bearer ${TOKEN}" -X POST \
+          https://${ARGOCD_SERVER}/api/v1/applications/${ARGOCD_APP}/sync \
+          -H "Content-Type: application/json" \
+          -d '{"prune": true, "dryRun": false}' \
+          | python3 -m json.tool
+
+        echo "ArgoCD sync requested."
+      '''
     }
   }
+}
+
 }
