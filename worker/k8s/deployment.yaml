@@ -1,7 +1,9 @@
-apiversion: apps/v1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: testing-mern-worker
+  labels:
+    app: testing-mern-worker
 spec:
   replicas: 1
   selector:
@@ -14,17 +16,38 @@ spec:
     spec:
       containers:
         - name: testing-mern-worker
-          image:  ogadityahota/testing-mern-worker:latest
-          imagePullPolicy: Never
+          image: ogadityahota/testing-mern-worker:latest
+          imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: 3001
-            - containerPort: 8081
+            - containerPort: 3002   
+            - containerPort: 8081   
           resources:
             limits:
-              cpu: 500m
-              memory: 500Mi
+              cpu: "500m"
+              memory: "500Mi"
             requests:
-              cpu: 100m
-              memory: 128Mi
-          secret:
-            secretName: testing-mern-worker-secret
+              cpu: "100m"
+              memory: "128Mi"
+          envFrom:
+            - secretRef:
+                name: testing-mern-worker-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: testing-mern-worker-service
+  labels:
+    app: testing-mern-worker
+spec:
+  selector:
+    app: testing-mern-worker
+  ports:
+    - name: http
+      protocol: TCP
+      port: 3002
+      targetPort: 3002
+    - name: ws
+      protocol: TCP
+      port: 8081
+      targetPort: 8081
+  type: ClusterIP

@@ -3,31 +3,39 @@ kind: Ingress
 metadata:
   name: testing-mern-ingress
   namespace: default
-  annotations: 
+  annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      # Ensure NGINX forwards websocket upgrade headers
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
 spec:
   rules:
-  - host: testing-mern.adityahota.online
-    http:
-      paths:
-      - path: /backend
-        pathType: Prefix
-        backend:
-          service:
-            name: testing-mern-backend-service
-            port:
-              number: 3001
-      - path: /worker
-        pathType: Prefix
-        backend:
-          service:
-            name: testing-mern-worker-service
-            port:
-              number: 3002
-      - path: /ws
-        pathType: Prefix
-        backend:
-          service:
-            name: testing-mern-worker-service
-            port:
-              number: 8081
+    - host: testing-mern.adityahota.online
+      http:
+        paths:
+          - path: /backend
+            pathType: Prefix
+            backend:
+              service:
+                name: testing-mern-backend-service
+                port:
+                  number: 3001
+          - path: /worker
+            pathType: Prefix
+            backend:
+              service:
+                name: testing-mern-worker-service
+                port:
+                  number: 3002
+          - path: /ws
+            pathType: Prefix
+            backend:
+              service:
+                name: testing-mern-worker-service
+                port:
+                  number: 8081

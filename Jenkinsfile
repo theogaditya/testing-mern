@@ -1,94 +1,101 @@
 pipeline {
-  agent { label 'agent-testing-mern' }
+  agent { label 'worker-testing-mern' }
 
   environment {
     DOCKERHUB_CREDENTIALS = 'testing-mern-docker'
     BACKEND_IMAGE = 'ogadityahota/testing-mern-backend'
     WORKER_IMAGE  = 'ogadityahota/testing-mern-worker'
-    CI_NET = 'ci-net-testing-mern'
-    REDIS_NAME = 'ci-redis-testing-mern'
-    REDIS_IMAGE = 'redis:7-alpine'
-    IMAGE_TAG = "${env.BUILD_NUMBER ?: 'local'}"
+    BUILD_TAG = "${env.BUILD_NUMBER}-${env.GIT_COMMIT?.take(7) ?: 'local'}"
+  }
+
+  options {
+    timestamps()
+    ansiColor('xterm')
+    buildDiscarder(logRotator(numToKeepStr: '50'))
   }
 
   stages {
     stage('Checkout') {
-      steps { checkout scm }
-    }
-
-    stage('Start Redis for tests') {
       steps {
-        sh '''
-          docker network inspect ${CI_NET} >/dev/null 2>&1 || docker network create ${CI_NET}
-          docker rm -f ${REDIS_NAME} >/dev/null 2>&1 || true
-          docker run -d --name ${REDIS_NAME} --network ${CI_NET} ${REDIS_IMAGE}
-          # wait for redis
-          for i in $(seq 1 10); do
-            docker exec ${REDIS_NAME} redis-cli ping | grep -q PONG && break || sleep 1
-          done
-        '''
+        checkout scm
+        sh 'git rev-parse --short HEAD || true'
       }
     }
 
-    stage('Backend: unit tests') {
+    stage('Install deps (root)') {
+      steps {
+        echo 'No global install. Installing per-project later.'
+      }
+    }
+
+    stage('Run unit tests - new-be') {
       steps {
         dir('new-be') {
-          sh '''
-            docker run --rm -v "$PWD":/work -w /work --network ${CI_NET} oven/bun:latest bash -lc '
-              bun install --no-save
-              bun run test:unit
-            '
-          '''
+          sh 'bun install --ignore-scripts || true'
+          sh 'bun run test:unit'
         }
       }
     }
 
-    stage('Worker: tests') {
+    stage('Run tests - worker (requires redis)') {
       steps {
+        script {
+          // start a local redis for tests (detached)
+          sh 'docker run -d --name ci-redis -p 6379:6379 redis:7-alpine'
+        }
         dir('worker') {
-          sh '''
-            docker run --rm -v "$PWD":/work -w /work --network ${CI_NET} -e REDIS_URL="redis://${REDIS_NAME}:6379" oven/bun:latest bash -lc '
-              bun install --no-save
-              REDIS_URL="redis://${REDIS_NAME}:6379" bun run test
-            '
-          '''
+          sh 'bun install --ignore-scripts || true'
+          sh 'bun run test'
+        }
+      }
+      post {
+        always {
+          sh 'docker rm -f ci-redis || true'
         }
       }
     }
 
-    stage('Build & Push images') {
+    stage('Build Docker images') {
+      steps {
+        script {
+          // build backend
+          dir('new-be') {
+            sh "docker build -t ${env.BACKEND_IMAGE}:${env.BUILD_TAG} -f Dockerfile ."
+          }
+          // build worker
+          dir('worker') {
+            sh "docker build -t ${env.WORKER_IMAGE}:${env.BUILD_TAG} -f Dockerfile ."
+          }
+        }
+      }
+    }
+
+    stage('Push images to Docker Hub') {
       steps {
         withCredentials([usernamePassword(credentialsId: env.DOCKERHUB_CREDENTIALS, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-          sh '''
-            echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-
-            # build & push backend
-            cd new-be
-            docker build -t ${BACKEND_IMAGE}:${IMAGE_TAG} .
-            docker push ${BACKEND_IMAGE}:${IMAGE_TAG}
-            docker tag ${BACKEND_IMAGE}:${IMAGE_TAG} ${BACKEND_IMAGE}:latest
-            docker push ${BACKEND_IMAGE}:latest || true
-            cd ..
-
-            # build & push worker
-            cd worker
-            docker build -t ${WORKER_IMAGE}:${IMAGE_TAG} .
-            docker push ${WORKER_IMAGE}:${IMAGE_TAG}
-            docker tag ${WORKER_IMAGE}:${IMAGE_TAG} ${WORKER_IMAGE}:latest
-            docker push ${WORKER_IMAGE}:latest || true
-            cd ..
-          '''
+          sh 'echo $DOCKER_PASS | docker login -u "$DOCKER_USER" --password-stdin'
+          sh "docker push ${env.BACKEND_IMAGE}:${env.BUILD_TAG}"
+          sh "docker push ${env.WORKER_IMAGE}:${env.BUILD_TAG}"
+          // optionally push :latest tag
+          sh "docker tag ${env.BACKEND_IMAGE}:${env.BUILD_TAG} ${env.BACKEND_IMAGE}:latest || true"
+          sh "docker tag ${env.WORKER_IMAGE}:${env.BUILD_TAG} ${env.WORKER_IMAGE}:latest || true"
+          sh "docker push ${env.BACKEND_IMAGE}:latest || true"
+          sh "docker push ${env.WORKER_IMAGE}:latest || true"
         }
       }
     }
   }
 
   post {
+    success {
+      echo "CI pipeline finished and images pushed as ${env.BUILD_TAG}"
+    }
+    failure {
+      echo "CI pipeline failed"
+    }
     always {
-      sh '''
-        docker rm -f ${REDIS_NAME} >/dev/null 2>&1 || true
-        docker network rm ${CI_NET} >/dev/null 2>&1 || true
-      '''
+      // make sure no leftover redis
+      sh 'docker rm -f ci-redis || true'
     }
   }
 }
