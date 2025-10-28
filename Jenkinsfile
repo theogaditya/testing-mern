@@ -32,6 +32,7 @@ pipeline {
       steps {
         dir('new-be') {
           sh 'bun install --ignore-scripts || true'
+          sh 'npx prisma generate'
           sh 'npx vitest test/unit.test.ts --run'
         }
       }
