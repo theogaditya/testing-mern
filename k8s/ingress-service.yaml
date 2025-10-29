@@ -3,31 +3,28 @@ kind: Ingress
 metadata:
   name: testing-mern-ingress
   namespace: default
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
-    nginx.ingress.kubernetes.io/use-regex: "true"
 spec:
-  ingressClassName: nginx
+  ingressClassName: traefik
   rules:
     - host: testing-mern.adityahota.online
       http:
         paths:
-          - path: /backend(/|$)(.*)
-            pathType: ImplementationSpecific
+          - path: /backend
+            pathType: Prefix
             backend:
               service:
                 name: testing-mern-backend-service
                 port:
                   number: 3001
-          - path: /worker(/|$)(.*)
-            pathType: ImplementationSpecific
+          - path: /worker
+            pathType: Prefix
             backend:
               service:
                 name: testing-mern-worker-service
                 port:
                   number: 3002
-          - path: /ws(/|$)(.*)
-            pathType: ImplementationSpecific
+          - path: /ws
+            pathType: Prefix
             backend:
               service:
                 name: testing-mern-worker-service

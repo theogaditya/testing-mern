@@ -31,17 +31,6 @@ spec:
           envFrom:
             - secretRef:
                 name: testing-mern-backend-secret
-          volumeMounts:
-            - name: env-volume
-              mountPath: /app/.env
-              subPath: .env
-      volumes:
-        - name: env-volume
-          secret:
-            secretName: testing-mern-backend-secret
-            items:
-              - key: .env
-                path: .env
 ---
 apiVersion: v1
 kind: Service
