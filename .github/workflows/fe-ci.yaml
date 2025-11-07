@@ -1,0 +1,30 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request: [ main ]
+
+jobs:
+  build-test-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up nodejs
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install deps
+        working-directory: fe
+        run: |
+          npm install 
+      
+      - name: build
+        working-directory: fe
+        run: |
+          npm run build
+      
