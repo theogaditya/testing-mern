@@ -1,0 +1,49 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: testing-mern-backend
+  labels:
+    app: testing-mern-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: testing-mern-backend
+  template:
+    metadata:
+      labels:
+        app: testing-mern-backend
+    spec:
+      containers:
+        - name: testing-mern-backend
+          image: ogadityahota/testing-mern-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3001
+          resources:
+            limits:
+              cpu: "500m"
+              memory: "500Mi"
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+          envFrom:
+            - secretRef:
+                name: testing-mern-backend-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: testing-mern-backend-service
+  labels:
+    app: testing-mern-backend
+spec:
+  selector:
+    app: testing-mern-backend
+  ports:
+    - name: http
+      protocol: TCP
+      port: 3001
+      targetPort: 3001
+  type: ClusterIP

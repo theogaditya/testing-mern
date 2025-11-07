@@ -1,0 +1,121 @@
+
+#name based routing
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: testing-mern-ingress
+  namespace: default
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.middlewares: |
+      default-backend-stripprefix@kubernetescrd,
+      default-worker-stripprefix@kubernetescrd,
+      default-ws-stripprefix@kubernetescrd
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: testing-mern.adityahota.online
+      http:
+        paths:
+          - path: /backend
+            pathType: Prefix
+            backend:
+              service:
+                name: testing-mern-backend-service
+                port:
+                  number: 3001
+          - path: /worker
+            pathType: Prefix
+            backend:
+              service:
+                name: testing-mern-worker-service
+                port:
+                  number: 3002
+          - path: /ws
+            pathType: Prefix
+            backend:
+              service:
+                name: testing-mern-worker-service
+                port:
+                  number: 8081
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: backend-stripprefix
+  namespace: default
+spec:
+  stripPrefix:
+    prefixes:
+      - /backend
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: worker-stripprefix
+  namespace: default
+spec:
+  stripPrefix:
+    prefixes:
+      - /worker
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: ws-stripprefix
+  namespace: default
+spec:
+  stripPrefix:
+    prefixes:
+      - /ws
+
+##########################
+# host based routing
+
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: testing-mern-ingress
+#   namespace: default
+#   annotations:
+#     traefik.ingress.kubernetes.io/router.entrypoints: websecure
+#     traefik.ingress.kubernetes.io/router.tls: "true"
+# spec:
+#   ingressClassName: treafik-traefik
+#   rules:
+#     # Backend app routing
+#     - host: backend-testing-mern.adityahota.online
+#       http:
+#         paths:
+#           - path: /
+#             pathType: Prefix
+#             backend:
+#               service:
+#                 name: testing-mern-backend-service
+#                 port:
+#                   number: 3001
+
+#     # Worker app routing
+#     - host: worker-testing-mern.adityahota.online
+#       http:
+#         paths:
+#           - path: /
+#             pathType: Prefix
+#             backend:
+#               service:
+#                 name: testing-mern-worker-service
+#                 port:
+#                   number: 3002
+
+#     # WebSocket routing
+#     - host: ws-testing-mern.adityahota.online
+#       http:
+#         paths:
+#           - path: /
+#             pathType: Prefix
+#             backend:
+#               service:
+#                 name: testing-mern-worker-service
+#                 port:
+#                   number: 8081
