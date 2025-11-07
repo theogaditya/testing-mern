@@ -1,5 +1,6 @@
 import './App.css'
 import React from 'react';
+const VITE_API_URL_BACKEND = import.meta.env.VITE_API_URL_BACKEND;
 
 function App() {
 
@@ -17,7 +18,7 @@ function App() {
 
   console.log("Submitting payload:", payload);
 
-  fetch('http://localhost:3001/v2', {
+  fetch(`${VITE_API_URL_BACKEND}/v2`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
