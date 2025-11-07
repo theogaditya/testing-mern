@@ -7,7 +7,6 @@ export interface UserConnection {
 
 export class SubManager {
   public subs: Map<string, UserConnection>;
-  // a map room -> set of userIds
   public rooms: Map<string, Set<string>>;
 
   constructor() {

@@ -40,12 +40,9 @@ export class WebSocketManager {
           subscribes.addRoom(id, msg.room);
           console.log("[WS] created/added to room:", msg.room);
 
-          // subscribe to Redis channel only once
           if (!this.subscribedRooms.has(msg.room)) {
             this.subscribedRooms.add(msg.room);
-            // register Redis callback for this channel
             this.redisSub.clientSubscriber().subscribe(msg.room, (message: string) => {
-              // broadcast redis message to every WS user in this room
               const users = subscribes.getUsersInRoom(msg.room);
               for (const u of users) {
                 try {
@@ -63,7 +60,6 @@ export class WebSocketManager {
         }
 
         if (msg.type === "exchangeMessage") {
-          // forward to redis
           this.redisPub.clientPublisher().publish(msg.room, msg.message)
             .then(() => {
               console.log("[WS] Published message to room:", msg.room);
@@ -74,11 +70,9 @@ export class WebSocketManager {
         }
 
         if (msg.type === "unsubscribe") {
-          // remove user from our maps
           subscribes.removeRoom(id, msg.room);
           console.log("[WS] removed user from room:", msg.room);
 
-          // if no one left in this room, unsubscribe from redis
           if (!subscribes.roomHasSubscribers(msg.room) && this.subscribedRooms.has(msg.room)) {
             this.subscribedRooms.delete(msg.room);
             this.redisSub.clientSubscriber().unsubscribe(msg.room).catch((err: any) => {
@@ -90,7 +84,6 @@ export class WebSocketManager {
       });
 
       ws.on("close", () => {
-        // remove user from all rooms and check unsubs
         const user = subscribes.subs.get(id);
         if (user) {
           for (const room of [...user.rooms]) {
@@ -108,7 +101,6 @@ export class WebSocketManager {
         console.log(`[WS] connection ${id} closed`);
       });
 
-      // send a JSON welcome message (safer than raw text)
       try {
         ws.send(JSON.stringify({ type: "connected", id }));
       } catch (err) {

@@ -1,137 +1,121 @@
 pipeline {
-  agent { label 'agent-testing-mern' }
+  agent { label 'worker-testing-mern' }
 
   environment {
-    DOCKERHUB_CREDENTIALS = 'testing-mern-docker'    // you already created this
-    DOCKERHUB_NAMESPACE = "ogadityahota"
-    BACKEND_REPO = "${env.DOCKERHUB_NAMESPACE}/testing-mern-backend"
-    WORKER_REPO  = "${env.DOCKERHUB_NAMESPACE}/testing-mern-worker"
-    CI_DOCKER_NETWORK = "ci-net-testing-mern"
-    TEST_REDIS_NAME = "ci-redis-testing-mern"
-    TEST_REDIS_IMAGE = "redis:7-alpine"
-    // IMAGE_TAG will be computed; keep a default in case BUILD_NUMBER/GIT_COMMIT aren't set
-    IMAGE_TAG = "${env.BUILD_NUMBER ?: 'local'}-${env.GIT_COMMIT?.take(8) ?: 'local'}"
-    // Jenkins secret id for Neon DB connection string (create secret text in Jenkins)
-    NEON_CRED_ID = "neon-db-url"
+    DOCKERHUB_CREDENTIALS = 'testing-mern-docker'
+    BACKEND_IMAGE = 'ogadityahota/testing-mern-backend'
+    WORKER_IMAGE  = 'ogadityahota/testing-mern-worker'
+  }
+
+  options {
+    timestamps()
+    ansiColor('xterm')
+    buildDiscarder(logRotator(numToKeepStr: '50'))
   }
 
   stages {
     stage('Checkout') {
       steps {
         checkout scm
+        sh 'git rev-parse --short HEAD || true'
       }
     }
 
-    // stage('Compute tag') {
-    //   steps {
-    //     script {
-    //       // compute a stable tag — fallback to timestamp if nothing else
-    //       def commit = env.GIT_COMMIT ?: sh(script: "git rev-parse --short HEAD || echo local", returnStdout: true).trim()
-    //       env.IMAGE_TAG = "${env.BUILD_NUMBER ?: 'manual'}-${commit}"
-    //       echo "IMAGE_TAG = ${env.IMAGE_TAG}"
-    //     }
-    //   }
-    // }
-
-    stage('Prepare Docker network') {
+    stage('Install deps (root)') {
       steps {
-        sh '''
-          docker network inspect ${CI_DOCKER_NETWORK} >/dev/null 2>&1 || docker network create ${CI_DOCKER_NETWORK}
-        '''
+        echo 'No global install. Installing per-project later.'
       }
     }
 
-    stage('Start test Redis (for worker tests)') {
+    stage('Run unit tests - new-be') {
       steps {
-        sh '''
-          docker rm -f ${TEST_REDIS_NAME} || true
-          docker run -d --name ${TEST_REDIS_NAME} --network ${CI_DOCKER_NETWORK} ${TEST_REDIS_IMAGE}
-          # wait for redis ready
-          for i in $(seq 1 10); do
-            docker exec ${TEST_REDIS_NAME} redis-cli ping | grep -q PONG && break || sleep 1
-          done
-        '''
+        dir('new-be') {
+          sh '''
+            export PATH="$HOME/.bun/bin:$PATH"
+            bun install --ignore-scripts || true
+            npx prisma generate
+            npx vitest test/unit.test.ts --run
+          '''
+        }
       }
     }
 
-    stage('Backend: run unit tests (needs Neon DB)') {
+    stage('Run tests - worker (requires redis)') {
       steps {
-        // inject NEON DB connection string from Jenkins secret text (id: neon-db-url)
-        withCredentials([string(credentialsId: env.NEON_CRED_ID, variable: 'DATABASE_URL')]) {
-          dir('backend') {
-            sh '''
-              # Run backend tests inside oven/bun container so agent doesn't need bun installed
-              docker run --rm \
-                -v "$PWD":/work -w /work \
-                --network ${CI_DOCKER_NETWORK} \
-                -e DATABASE_URL="${DATABASE_URL}" \
-                oven/bun:latest bash -lc '
-                  bun install --no-save || true
-                  # run unit tests which require DATABASE_URL (Neon)
-                  DATABASE_URL="${DATABASE_URL}" bun run test:unit
-                '
-            '''
+        script {
+          sh 'docker run -d --name ci-redis -p 6379:6379 redis:7-alpine'
+        }
+        dir('worker') {
+          sh '''
+            export PATH="$HOME/.bun/bin:$PATH"
+            bun install --ignore-scripts || true
+            npx vitest test/ws.test.ts --run
+          '''
+        }
+      }
+      post {
+        always {
+          sh 'docker rm -f ci-redis || true'
+        }
+      }
+    }
+
+    stage('Build Docker images') {
+      steps {
+        script {
+          dir('new-be') {
+            sh "docker build -t ${env.BACKEND_IMAGE}:latest -f Dockerfile ."
+          }
+          dir('worker') {
+            sh "docker build -t ${env.WORKER_IMAGE}:latest -f Dockerfile ."
           }
         }
       }
     }
 
-    stage('Worker: run tests (needs Redis)') {
-      steps {
-        dir('worker') {
-          sh '''
-            docker run --rm \
-              -v "$PWD":/work -w /work \
-              --network ${CI_DOCKER_NETWORK} \
-              -e REDIS_URL="redis://ci-redis-testing-mern:6379" \
-              oven/bun:latest bash -lc '
-                bun install --no-save || true
-                REDIS_URL="redis://ci-redis-testing-mern:6379" bun run test
-              '
-          '''
-        }
-      }
-    }
-
-    stage('Docker Build & Push (backend & worker)') {
+    stage('Push images to Docker Hub') {
       steps {
         withCredentials([usernamePassword(credentialsId: env.DOCKERHUB_CREDENTIALS, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
           sh '''
-            echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-
-            # Build & push backend
-            cd backend
-            docker build -t ${BACKEND_REPO}:${IMAGE_TAG} .
-            docker push ${BACKEND_REPO}:${IMAGE_TAG}
-            docker tag ${BACKEND_REPO}:${IMAGE_TAG} ${BACKEND_REPO}:latest
-            docker push ${BACKEND_REPO}:latest || true
-            cd ..
-
-            # Build & push worker
-            cd worker
-            docker build -t ${WORKER_REPO}:${IMAGE_TAG} .
-            docker push ${WORKER_REPO}:${IMAGE_TAG}
-            docker tag ${WORKER_REPO}:${IMAGE_TAG} ${WORKER_REPO}:latest
-            docker push ${WORKER_REPO}:latest || true
-            cd ..
+            echo $DOCKER_PASS | docker login -u "$DOCKER_USER" --password-stdin
+            docker push ${BACKEND_IMAGE}:latest
+            docker push ${WORKER_IMAGE}:latest
           '''
         }
       }
     }
-  } // stages
+  }
 
   post {
-    always {
-      sh '''
-        docker rm -f ${TEST_REDIS_NAME} || true
-        docker network rm ${CI_DOCKER_NETWORK} || true
-      '''
-    }
     success {
-      echo "Success: pushed ${BACKEND_REPO}:${IMAGE_TAG} and ${WORKER_REPO}:${IMAGE_TAG}"
+      script {
+        env.ARGOCD_SERVER = 'a794d5cd94aee45dfb7c88d33ef442b3-198542243.us-east-2.elb.amazonaws.com'
+        env.ARGOCD_APP = 'wanderlust'
+      }
+
+      withCredentials([usernamePassword(credentialsId: 'argocd-login', usernameVariable: 'ARGO_USER', passwordVariable: 'ARGO_PASS')]) {
+        sh '''
+          set -e
+          echo "Requesting ArgoCD token..."
+          TOKEN=$(curl -s -k -H "Content-Type: application/json" -d '{"username":"'"$ARGO_USER"'","password":"'"$ARGO_PASS"'"}' https://${ARGOCD_SERVER}/api/v1/session \
+                  | python3 -c "import sys, json; print(json.load(sys.stdin).get('token',''))")
+
+          if [ -z "$TOKEN" ]; then
+            echo "ERROR: Unable to get ArgoCD token"; exit 1
+          fi
+
+          echo "Triggering ArgoCD sync for app: ${ARGOCD_APP}"
+          curl -s -k -H "Authorization: Bearer ${TOKEN}" -X POST \
+            https://${ARGOCD_SERVER}/api/v1/applications/${ARGOCD_APP}/sync \
+            -H "Content-Type: application/json" \
+            -d '{"prune": true, "dryRun": false}'
+          echo "✅ ArgoCD sync requested successfully."
+        '''
+      }
     }
+
     failure {
-      echo "Pipeline failed — check logs"
+      echo "❌ CI pipeline failed. ArgoCD sync skipped."
     }
   }
 }
