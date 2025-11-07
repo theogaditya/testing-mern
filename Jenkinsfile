@@ -116,3 +116,6 @@ pipeline {
 
     failure {
       echo "❌ CI pipeline failed. ArgoCD sync skipped."
+    }
+  }
+}
