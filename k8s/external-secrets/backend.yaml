@@ -1,0 +1,18 @@
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: testing-mern-backend-external
+  namespace: default
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"   # after SecretStore
+spec:
+  refreshInterval: 5h                   # how often to check for updates
+  secretStoreRef:
+    kind: SecretStore
+    name: aws-sm-store
+  target:
+    name: testing-mern-backend-secret   # <- the K8s Secret your Deployment uses
+    creationPolicy: Owner
+  dataFrom:
+    - extract:
+        key: prod-backend-testing-mern       # <- AWS Secrets Manager name

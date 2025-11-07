@@ -1,0 +1,84 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  build-test-push:
+    runs-on: ubuntu-latest
+
+    env:
+      BACKEND_IMAGE: ogadityahota/testing-mern-backend
+      WORKER_IMAGE: ogadityahota/testing-mern-worker
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up nodejs
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v1
+
+      # -------------------------
+      # Backend tests
+      # -------------------------
+      - name: Install deps (backend)
+        working-directory: new-be
+        run: |
+          bun install --ignore-scripts || true
+          npx prisma generate
+
+      - name: Run backend tests
+        working-directory: new-be
+        run: |
+          npx vitest test/unit.test.ts --run
+
+      # -------------------------
+      # Worker tests (requires redis)
+      # -------------------------
+      - name: Start Redis
+        run: docker run -d --name ci-redis -p 6379:6379 redis:7-alpine
+
+      - name: Install deps (worker)
+        working-directory: worker
+        run: |
+          bun install --ignore-scripts || true
+
+      - name: Run worker tests
+        working-directory: worker
+        run: |
+          npx vitest test/ws.test.ts --run
+
+      - name: Stop Redis
+        if: always()
+        run: docker rm -f ci-redis || true
+
+      # -------------------------
+      # Build & push docker images
+      # -------------------------
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+      - name: Build backend image
+        working-directory: new-be
+        run: |
+          docker build -t $BACKEND_IMAGE:latest -f Dockerfile .
+
+      - name: Build worker image
+        working-directory: worker
+        run: |
+          docker build -t $WORKER_IMAGE:latest -f Dockerfile .
+
+      - name: Push images
+        run: |
+          docker push $BACKEND_IMAGE:latest
+          docker push $WORKER_IMAGE:latest
