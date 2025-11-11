@@ -1,0 +1,68 @@
+## bucket resource
+# resource "google_storage_bucket" "my_bucket" {
+#   name     = "adi-bucket-terra"   
+#   location = "us-central1"                 
+#   force_destroy = true
+#   project = "orbital-builder-454706-h5"                  
+# }
+
+## vm instance resource
+# resource "google_compute_instance" "testing-terra" {
+#   name         = "testing-terra"
+#   machine_type = "e2-micro"
+#   tags = ["http-server", "https-server"]
+#   zone = "us-central1-a"
+#   allow_stopping_for_update = true
+
+#   boot_disk {
+#     auto_delete = true
+#     initialize_params {
+#       image = "debian-cloud/debian-12"
+#       size  = 15
+#       type  = "pd-balanced"
+#     }
+#     mode = "READ_WRITE"
+#   }
+  
+#   can_ip_forward      = true
+#   deletion_protection = false
+
+#   network_interface {
+#     network = "default"
+#     access_config {
+#       network_tier = "STANDARD"
+#     }
+#   }
+
+#  scheduling {
+#     automatic_restart   = true
+#     on_host_maintenance = "MIGRATE"
+#     preemptible         = false
+#     provisioning_model  = "STANDARD"
+#   }
+
+#     shielded_instance_config {
+#     enable_integrity_monitoring = true
+#     enable_secure_boot          = false
+#   }
+
+#   service_account {
+#      email  = "97618793412-compute@developer.gserviceaccount.com"
+#      scopes = ["https://www.googleapis.com/auth/devstorage.read_only", "https://www.googleapis.com/auth/logging.write", 
+#      "https://www.googleapis.com/auth/monitoring.write", "https://www.googleapis.com/auth/service.management.readonly", 
+#      "https://www.googleapis.com/auth/servicecontrol", "https://www.googleapis.com/auth/trace.append"]
+#   }
+
+# }
+
+# output "vm_external_ip" {
+#   description = "Public IP of the VM"
+#   value       = google_compute_instance.testing-terra.network_interface[0].access_config[0].nat_ip
+# }
+
+
+## simple local file resource
+# resource local_file my_file {
+#     filename = "auto.txt"
+#     content  = "Hello, world!"
+# }
